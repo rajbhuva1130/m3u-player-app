@@ -22,14 +22,26 @@ body { margin: 0; background: var(--bg); color: var(--text); font-family: ui-san
   max-width: none;
 }
 
-/* Hide the Show button on Desktop/Laptop view by default */
+/* Desktop: When sidebar is explicitly hidden, collapse the sidebar column to 0 */
+.app.sidebar-hidden {
+  grid-template-columns: 0 1fr;
+}
+
+/* FIX: Ensure the toggle button is hidden by default on DESKTOP *only* when the sidebar is open.
+   Since the button is only rendered in JSX when !sidebarOpen is true, 
+   we only need to ensure it appears on desktop when rendered. */
 .sidebar-show-toggle {
-    display: none;
+    /* REMOVED: display: none; global rule */
 }
 
 @media (max-width: 900px) {
   .app {
     grid-template-columns: 1fr;
+  }
+
+  /* Show the button on mobile (App.jsx ensures it only renders when closed) */
+  .sidebar-show-toggle {
+      display: block; 
   }
 }
 
@@ -43,7 +55,7 @@ body { margin: 0; background: var(--bg); color: var(--text); font-family: ui-san
   box-shadow: 1px 0 10px rgba(0, 0, 0, 0.4);
 }
 
-/* Hiding rule that works universally */
+/* Hiding rule that works universally for the overlay behaviour on mobile */
 .sidebar.hidden { 
   display: none !important; 
 }
@@ -182,8 +194,12 @@ body { margin: 0; background: var(--bg); color: var(--text); font-family: ui-san
 
 /* Player area */
 .player-wrap {
-  position: relative; background: #000; display:flex; align-items:center; justify-content:center;
-  flex: 1;
+  position: relative; 
+  background: #000; 
+  display:flex; 
+  align-items:center; 
+  justify-content:center;
+  flex: 1; /* Makes the player wrap take up all available vertical space */
   padding: 20px;
 }
 
@@ -195,15 +211,23 @@ body { margin: 0; background: var(--bg); color: var(--text); font-family: ui-san
 }
 
 .right {
-  display:flex; flex-direction: column; height: 100%;
+  display:flex; 
+  flex-direction: column; 
+  height: 100%; /* Important for the flex container to stretch vertically */
 }
 /* Right Header - Controls/Status Bar - Liquid Glass */
 .right-hd {
-  height: 60px; display:flex; align-items:center; gap: 10px; padding: 10px 20px;
+  height: 60px; 
+  display:flex; 
+  align-items:center; 
+  gap: 10px; 
+  padding: 10px 20px;
   border-bottom: 1px solid var(--border); 
   background: rgba(18, 25, 34, 0.7); 
   backdrop-filter: blur(8px);
   flex-shrink: 0;
+  white-space: nowrap; 
+  overflow: hidden;    
 }
 .right-title { font-weight: 700; font-size: 1.2em; }
 .right-sub { color: var(--sub); font-size: 0.8em; }
@@ -219,7 +243,7 @@ body { margin: 0; background: var(--bg); color: var(--text); font-family: ui-san
 
 .spacer { flex: 1; }
 
-/* --- Mobile/Small Screen Overrides --- */
+/* --- Mobile/Small Screen Overrides (max-width: 900px) --- */
 @media (max-width: 900px) {
   
   /* Sidebar Positioning */
@@ -232,15 +256,40 @@ body { margin: 0; background: var(--bg); color: var(--text); font-family: ui-san
     height: 100vh;
   }
   
-  /* Show the toggle button in the right-hd only on mobile when the sidebar is closed */
+  /* The class that hides it completely on mobile MUST remain. */
+  .sidebar.hidden { 
+    display: none !important; 
+  }
+
+  /* Show the toggle button only on mobile (it's hidden by React logic when open) */
   .sidebar-show-toggle {
       display: block; 
+      flex-shrink: 0; 
   }
   
   /* Right panel size adjustment on mobile */
-  .right { position: relative; width: 100%; }
+  .right { 
+    position: relative; 
+    width: 100%; 
+    height: 100%; 
+  }
   
-  .player-wrap { height: calc(100vh - 120px); }
+  /* Reduced padding for better screen utilization on small devices */
+  .player-wrap { 
+      padding: 10px; 
+  }
+
+  /* Reduced padding and gap for controls on mobile */
+  .controls {
+      padding: 8px 10px;
+      gap: 5px;
+  }
+  
+  /* Reduce button size slightly on mobile for controls */
+  .controls .btn {
+      padding: 5px 8px;
+  }
+
   .video { height: 100%; max-height: 100%; border-radius: 14px; }
   
   /* Sidebar Content Layout for Mobile (stack elements vertically) */
@@ -267,9 +316,22 @@ body { margin: 0; background: var(--bg); color: var(--text); font-family: ui-san
       margin: 0;
   }
   
-  /* Right header when sidebar is open */
+  /* Right header content adjustments for mobile */
   .right-hd {
       padding-left: 10px;
       padding-right: 10px;
+  }
+  
+  /* Ensure the title shrinks and truncates gracefully */
+  .right-hd .right-title {
+      flex-shrink: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+  }
+  
+  /* Hide the long URL/subtitle on narrow mobile screens */
+  .right-hd .right-sub {
+      display: none;
   }
 }

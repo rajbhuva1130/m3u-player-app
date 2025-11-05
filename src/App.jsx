@@ -8,6 +8,7 @@ import "./index.css";
 
 export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [isMobile, setIsMobile] = useState(false);
   const [raw, setRaw] = useState("");
   const [all, setAll] = useState([]);
   const [q, setQ] = useState("");
@@ -106,15 +107,33 @@ export default function App() {
     };
   }, [current]);
 
+  // Handle mobile/desktop state based on screen width
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 900px)");
-    if (mq.matches) setSidebarOpen(false);
+    const handler = (e) => {
+        setIsMobile(e.matches); 
+        if (!e.matches) { 
+            // On Desktop, default sidebar to open
+            setSidebarOpen(true); 
+        } else {
+            // On Mobile, default sidebar to closed
+            setSidebarOpen(false);
+        }
+    };
+    handler(mq);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
   }, []);
 
+  // 'hidden' prop is only used on mobile to explicitly hide the sidebar element when closed.
+  // On desktop, the sidebar stays mounted, and hiding is controlled by the CSS grid column collapse.
+  const sidebarHiddenProp = isMobile && !sidebarOpen; 
+
   return (
+    // Apply sidebar-hidden class to the app container to toggle the grid layout on desktop
     <div className={`app ${!sidebarOpen ? "sidebar-hidden" : ""}`}>
       <Sidebar
-        hidden={!sidebarOpen}
+        hidden={sidebarHiddenProp} 
         q={q}
         setQ={setQ}
         playlist={[]}                 /* Optional: your own list if needed */
@@ -126,13 +145,17 @@ export default function App() {
         onPlay={play}
         onFav={fav}
         onSelect={select}
-        onHideSidebar={() => setSidebarOpen(false)}
+        onHideSidebar={() => setSidebarOpen(false)} 
       />
 
       <div className="right">
         <div className="right-hd">
+          {/* Show the '☰ Show' button only when the sidebar is closed (!sidebarOpen) */}
           {!sidebarOpen && (
-            <button className="iconbtn sidebar-show-toggle" onClick={() => setSidebarOpen(true)}>
+            <button 
+              className="iconbtn sidebar-show-toggle" 
+              onClick={() => setSidebarOpen(true)}
+            >
               ☰ Show
             </button>
           )}
