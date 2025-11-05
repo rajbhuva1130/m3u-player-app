@@ -18,19 +18,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Setup Node (with cache)
         uses: actions/setup-node@v4
         with:
           node-version: 18
+          cache: 'npm'              # ✅ Cache based on package-lock.json
 
-      - name: Install Dependencies
-        run: npm ci
+      - name: Install dependencies
+        run: npm install            # use npm ci only if lockfile is clean & complete
 
       - name: Build
         run: npm run build
 
-      - name: Upload build folder
-        uses: actions/upload-pages-artifact@v3   # ✅ Updated to v3
+      - name: Upload build output
+        uses: actions/upload-pages-artifact@v3
         with:
           path: ./dist
 
@@ -42,4 +43,4 @@ jobs:
 
     steps:
       - name: Deploy to GitHub Pages
-        uses: actions/deploy-pages@v4          # ✅ Updated to v4
+        uses: actions/deploy-pages@v4
