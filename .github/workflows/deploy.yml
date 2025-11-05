@@ -21,11 +21,13 @@ jobs:
       - name: Setup Node (with cache)
         uses: actions/setup-node@v4
         with:
-          node-version: 18
-          cache: 'npm'              # ✅ Cache based on package-lock.json
+          node-version: 22           # ✅ Updated Node version
+          cache: 'npm'
 
-      - name: Install dependencies
-        run: npm install            # use npm ci only if lockfile is clean & complete
+      - name: Clean install dependencies
+        run: |
+          rm -rf node_modules package-lock.json  # ✅ Prevent rolldown binding bug
+          npm install
 
       - name: Build
         run: npm run build
