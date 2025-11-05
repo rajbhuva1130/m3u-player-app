@@ -1,337 +1,163 @@
-:root {
+:root{
+  --space: clamp(0.6rem, 1.6vmin, 1rem);
+  --space-lg: clamp(0.9rem, 2.2vmin, 1.4rem);
+  --radius: clamp(0.5rem, 1.4vmin, 1rem);
+  --radius-lg: clamp(0.8rem, 2vmin, 1.4rem);
+
+  --fs-xs: clamp(0.72rem, 1.2vmin, 0.86rem);
+  --fs-sm: clamp(0.86rem, 1.6vmin, 1rem);
+  --fs-md: clamp(1rem, 1.9vmin, 1.15rem);
+  --fs-lg: clamp(1.12rem, 2.2vmin, 1.35rem);
+
   --bg: #0b0e13;
-  --panel: rgba(18, 25, 34, 0.7); /* Darker, semi-transparent base for glass */
+  --panel: rgba(18,25,34,0.7);
   --panel-2: rgba(255,255,255,0.08);
   --border: rgba(255,255,255,0.12);
   --text: #e6e8eb;
   --sub: #aab2bf;
-  --accent: #e50914; /* Netflix Red */
-  --accent-2: #cc0812; /* Slightly darker red for hover */
-  --shadow: 0 4px 10px rgba(0,0,0,0.3); /* Subtle shadow for depth */
+  --accent: #e50914;
+  --accent-2:#cc0812;
+  --shadow: 0 0.25rem 0.7rem rgba(0,0,0,.3);
+
+  --sidebar-w: clamp(18rem, 26vw, 28rem);
+
+  --inset-t: env(safe-area-inset-top);
+  --inset-b: env(safe-area-inset-bottom);
+  --inset-l: env(safe-area-inset-left);
+  --inset-r: env(safe-area-inset-right);
 }
 
-* { box-sizing: border-box; }
-html, body, #root { height: 100%; }
-body { margin: 0; background: var(--bg); color: var(--text); font-family: ui-sans-serif, system-ui, Arial; }
-
-/* --- LAYOUT GRID --- */
-.app {
-  height: 100%;
-  display: grid;
-  grid-template-columns: 340px 1fr;
-  max-width: none;
+*{box-sizing:border-box}
+html,body,#root{height:100%}
+body{
+  margin:0; background:var(--bg); color:var(--text);
+  font-family: ui-sans-serif, system-ui, Arial;
+  font-size:16px;
 }
 
-/* Desktop: When sidebar is explicitly hidden, collapse the sidebar column to 0 */
-.app.sidebar-hidden {
-  grid-template-columns: 0 1fr;
+/* Grid: sidebar overlays; right fills */
+.app.desktop{ height:100%; display:grid; grid-template-columns: 1fr; }
+.app.compact{ height:100%; display:grid; grid-template-columns: 1fr; }
+
+/* Backdrop when sidebar open (iPad/Desktop) */
+.backdrop{
+  position: fixed; inset: 0; background: rgba(0,0,0,0);
+  backdrop-filter: none; opacity: 0; pointer-events: none;
+  transition: opacity .2s ease, backdrop-filter .2s ease; z-index: 240;
+}
+.backdrop.show{ background: rgba(0,0,0,0.35); backdrop-filter: blur(.4rem); opacity: 1; pointer-events: auto; }
+
+/* Sidebar overlay with macOS-style soft bounce (D1) */
+.sidebar-overlay{
+  position: fixed; inset-block: 0; inset-inline-start: 0;
+  inline-size: min(var(--sidebar-w), 92vw); max-inline-size: 32rem;
+  z-index: 250; transform: translateX(-104%); will-change: transform;
+}
+@keyframes slideBounceIn { 0%{transform:translateX(-104%);} 80%{transform:translateX(-2%);} 100%{transform:translateX(0%);} }
+@keyframes slideBounceOut { 0%{transform:translateX(0%);} 100%{transform:translateX(-104%);} }
+.sidebar-overlay.open{ animation: slideBounceIn .28s cubic-bezier(0.2, 0.8, 0.4, 1.2) forwards; }
+.sidebar-overlay:not(.open){ animation: slideBounceOut .22s ease forwards; }
+
+/* Sidebar block */
+.sidebar{
+  position:relative; background:var(--panel); backdrop-filter: blur(0.8rem);
+  border-right: 0.0625rem solid var(--border); overflow:hidden;
+  box-shadow: 0.5rem 0 1.25rem rgba(0,0,0,.35); display:flex; flex-direction:column; block-size:100%;
 }
 
-/* FIX: Ensure the toggle button is hidden by default on DESKTOP *only* when the sidebar is open.
-   Since the button is only rendered in JSX when !sidebarOpen is true, 
-   we only need to ensure it appears on desktop when rendered. */
-.sidebar-show-toggle {
-    /* REMOVED: display: none; global rule */
+/* Search at top of sidebar */
+.sidebar-search{
+  padding: var(--space) var(--space); border-bottom: 0.0625rem solid var(--border);
+  background: rgba(18,25,34,0.85);
 }
-
-@media (max-width: 900px) {
-  .app {
-    grid-template-columns: 1fr;
-  }
-
-  /* Show the button on mobile (App.jsx ensures it only renders when closed) */
-  .sidebar-show-toggle {
-      display: block; 
-  }
+.search-input{
+  display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:var(--space);
+  inline-size:100%; padding: calc(var(--space)*0.6) var(--space);
+  background: rgba(255,255,255,0.08); border: 0.0625rem solid rgba(255,255,255,0.14);
+  border-radius: 0.9rem;
 }
-
-/* Sidebar - Liquid Glass */
-.sidebar {
-  position: relative;
-  backdrop-filter: blur(12px);
-  background: var(--panel);
-  border-right: 1px solid var(--border);
-  overflow: hidden;
-  box-shadow: 1px 0 10px rgba(0, 0, 0, 0.4);
+.search-input input{
+  inline-size:100%; border:none; outline:none; background:transparent; color:var(--text); font-size: var(--fs-md);
 }
+.loupe{ opacity:.9; }
+.clear{ background:transparent; border:none; color:var(--text); font-size:var(--fs-md); opacity:.7; cursor:pointer; }
+.clear:hover{ opacity:1; }
 
-/* Hiding rule that works universally for the overlay behaviour on mobile */
-.sidebar.hidden { 
-  display: none !important; 
+.sidebar-body{ height:100%; overflow:auto; padding: var(--space); }
+
+/* Sections / rows */
+.section{ margin-bottom:var(--space); border:0.0625rem solid var(--border); border-radius: calc(var(--radius)*1.4); background: rgba(0,0,0,.2); overflow:hidden; }
+.section-hd{ padding:var(--space); display:flex; align-items:center; justify-content:space-between; background: rgba(18,25,34,.9); border-bottom: 0.0625rem solid var(--border); font-weight:700; font-size: var(--fs-sm); text-transform:uppercase; color:var(--sub); }
+.section-bd{ padding: calc(var(--space)*0.6); }
+.row{ display:flex; align-items:center; justify-content:space-between; padding: calc(var(--space)*0.7) var(--space); border-radius: var(--radius); border: 0.0625rem solid transparent; cursor:pointer; margin-bottom: 0.25rem; outline: none; }
+.row:hover{ background: rgba(255,255,255,.06); }
+.row.active{ border-color: var(--accent); background: rgba(229,9,20,.12); }
+.row:focus{ box-shadow: 0 0 0 0.125rem var(--accent); }
+.left{ display:flex; align-items:center; gap: var(--space); }
+.logo{ inline-size:1.25rem; block-size:1.25rem; border-radius:0.25rem; border:0.0625rem solid var(--border); background:#11151f; flex-shrink:0; }
+.title{ font-weight:500; font-size: var(--fs-sm); line-height:1.2; }
+.meta{ font-size: var(--fs-xs); color:var(--sub); line-height:1.2; }
+.favbtn{ background:transparent; border:none; font-size: var(--fs-md); padding:0; opacity:.8; }
+.favbtn:hover{ opacity:1; }
+.playbtn{ background: var(--accent); border:none; color:#fff; padding: calc(var(--space)*0.5) var(--space); border-radius: calc(var(--radius)*1.4); font-weight:700; font-size: var(--fs-sm); box-shadow: 0 0.125rem 0.375rem rgba(229,9,20,.4); }
+.playbtn:hover{ background: var(--accent-2); }
+
+/* Right/content */
+.right{ display:flex; flex-direction:column; height:100%; }
+.right-hd{
+  min-height: 3.2rem; display:flex; align-items:center; gap: var(--space);
+  padding: var(--space-lg); border-bottom: 0.0625rem solid var(--border);
+  background: rgba(18,25,34,.7); backdrop-filter: blur(0.5rem);
+  white-space:nowrap; overflow:hidden;
 }
+.hdr-toggle{ margin-inline-end: var(--space); } /* ☰ at left */
+.right-title{ font-weight:700; font-size: var(--fs-md); }
+.right-sub{ color:var(--sub); font-size: var(--fs-xs); margin-inline-start: auto; }
 
-.sidebar-body {
-  height: calc(100% - 70px); /* Adjusted height to accommodate topbar */
-  overflow: auto;
-  padding: 10px;
+/* Player */
+.player-wrap{ position:relative; background:#000; display:flex; align-items:center; justify-content:center; flex:1; padding: var(--space-lg); }
+.video{ width:min(100%,160vh); height:auto; aspect-ratio:16/9; background:#000; border-radius: calc(var(--radius)*1.8); box-shadow: var(--shadow); }
+.empty-state{ color:var(--sub); padding: var(--space-lg); font-size: var(--fs-md); }
+
+/* Controls */
+.controls{
+  display:flex; align-items:center; gap: var(--space);
+  padding: var(--space-lg); padding-bottom: calc(var(--space-lg) + var(--inset-b));
+  border-top: 0.0625rem solid var(--border); background: rgba(18,25,34,.7); backdrop-filter: blur(0.5rem);
 }
-
-/* Top bar for Search/Selection controls */
-.topbar {
-  height: auto; 
-  display: flex; 
-  align-items: center; 
-  padding: 10px;
-  border-bottom: 1px solid var(--border);
-  background: rgba(18, 25, 34, 0.8);
-  position: relative; /* Needed for positioning mobile close button */
+.btn, .iconbtn, .favbtn{
+  appearance:none; border:0.0625rem solid var(--border); background:var(--panel-2);
+  color:var(--text); border-radius: var(--radius); padding: calc(var(--space)*0.6) var(--space);
+  cursor:pointer; transition: background .12s ease; white-space:nowrap; font-size: var(--fs-sm);
 }
+.btn:hover, .iconbtn:hover{ background: rgba(255,255,255,.15); }
+.spacer{ flex:1; }
 
-/* Wrapper for search bar, dropdown, and upload */
-.search-controls-wrap {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    width: 100%;
+/* ---------- Phones: bottom sheet ---------- */
+.app.compact .right-hd .right-sub{ display:none; }
+.sheet{ position: fixed; inset: 0; display: none; background: rgba(0,0,0,0.25); z-index: 220; }
+.sheet.open{ display: block; }
+.sheet-wrap{
+  position: absolute; inset-inline: 0; inset-block-end: 0;
+  inline-size: 100%; block-size: min(88vh, 44rem);
+  background: rgba(12,18,27,0.92); backdrop-filter: blur(0.9rem);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  transform: translateY(100%); transition: transform .26s ease-out;
+  padding-bottom: calc(var(--inset-b) + var(--space));
 }
-.search-controls-wrap > * {
-    flex: 1;
-}
+.sheet.open .sheet-wrap{ transform: translateY(0); }
+.sheet-hd{ display:flex; align-items:center; justify-content:space-between; padding: var(--space-lg) var(--space-lg) var(--space); border-bottom: 0.0625rem solid var(--border); }
+.sheet-hd .title{ font-weight:700; font-size: var(--fs-md); }
+.sheet-bd{ padding: var(--space); display:flex; flex-direction:column; gap: var(--space); }
+.sheet-search{ padding: 0; }
+.tabs{ display:flex; gap: var(--space); }
+.tab{ flex:1; text-align:center; padding: calc(var(--space)*0.6); border-radius: var(--radius); border: 0.0625rem solid var(--border); background: var(--panel-2); color: var(--text); font-size: var(--fs-sm); }
+.tab.active{ background: rgba(229,9,20,.18); border-color: var(--accent); }
+.panel{ min-height: 40vh; overflow:auto; border-radius: var(--radius); }
+.list{ display:block; }
 
-/* Custom layout for search/dropdown/upload */
-.search-controls-wrap .input {
-    width: auto; /* allow flex to size */
-}
-.search-controls-wrap .iconbtn {
-    flex-shrink: 0;
-    width: auto;
-}
-.search-controls-wrap .select-wrap {
-    flex-shrink: 1;
-    min-width: 80px;
-}
-
-
-/* General Button Styles */
-.iconbtn, .btn, .favbtn, .playbtn {
-  appearance: none; border: 1px solid var(--border); background: var(--panel-2);
-  color: var(--text); border-radius: 8px; padding: 6px 10px; cursor: pointer;
-  box-shadow: none;
-  transition: background 0.1s ease;
-  white-space: nowrap;
-}
-.iconbtn { padding: 6px 10px; }
-.btn:hover, .iconbtn:hover, .favbtn:hover { background: rgba(255,255,255,0.15); }
-.input {
-  width: 100%; padding: 8px 10px; border-radius: 8px;
-  border: 1px solid var(--border); background: rgba(0, 0, 0, 0.5); color: var(--text);
-}
-
-/* Select element inside the input style container */
-.select-wrap select.input {
-  padding: 8px 10px; 
-  -webkit-appearance: none;
-  -moz-appearance: none;
-  appearance: none;
-  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12"><path fill="%23aab2bf" d="M10 4L6 8 2 4z"/></svg>');
-  background-repeat: no-repeat;
-  background-position: right 8px center;
-  padding-right: 25px; 
-}
-
-
-/* Sections (Accordion) */
-.section { margin-bottom: 10px; border: 1px solid var(--border); border-radius: 14px; overflow: hidden; background: rgba(0, 0, 0, 0.2); }
-.section-hd {
-  padding: 10px 12px; display:flex; align-items:center; justify-content: space-between;
-  background: rgba(18, 25, 34, 0.9); 
-  border-bottom: 1px solid var(--border); font-weight: 700;
-  font-size: 0.95em;
-  text-transform: uppercase;
-  color: var(--sub);
-}
-.section-bd { padding: 6px; }
-
-.row {
-  display:flex; align-items:center; justify-content: space-between;
-  padding: 8px 10px; 
-  border-radius: 8px; 
-  border: 1px solid transparent; 
-  cursor: pointer;
-  margin-bottom: 4px;
-}
-.row:last-child { margin-bottom: 0; }
-
-.row:hover { background: rgba(255,255,255,0.06); }
-.row.active { border-color: var(--accent); background: rgba(229, 9, 20, 0.1); } 
-
-.left {
-  display:flex; align-items:center; gap: 10px;
-}
-.logo {
-  width: 20px; height: 20px; border-radius: 4px; 
-  border: 1px solid var(--border);
-  background: #11151f;
-  flex-shrink: 0;
-}
-.title { font-weight: 500; font-size: 0.95em; line-height: 1.2; }
-.meta { font-size: 10px; color: var(--sub); line-height: 1.2; }
-
-/* Favorite Button refinement */
-.favbtn {
-  background: transparent;
-  border: none;
-  font-size: 1.2em;
-  padding: 0;
-  opacity: 0.7;
-}
-.favbtn:hover { background: transparent; opacity: 1; }
-
-/* Play Button refinement */
-.playbtn {
-  background: var(--accent); 
-  border: none; 
-  color: white; 
-  padding: 4px 8px; 
-  border-radius: 14px; 
-  cursor: pointer; 
-  font-weight: 700;
-  font-size: 0.8em;
-  box-shadow: 0 2px 6px rgba(229, 9, 20, 0.4);
-}
-.playbtn:hover { background: var(--accent-2); }
-
-
-/* Player area */
-.player-wrap {
-  position: relative; 
-  background: #000; 
-  display:flex; 
-  align-items:center; 
-  justify-content:center;
-  flex: 1; /* Makes the player wrap take up all available vertical space */
-  padding: 20px;
-}
-
-.video {
-  width: 100%; height: 100%; max-height: 100%;
-  background: #000; 
-  border-radius: 18px; 
-  box-shadow: var(--shadow);
-}
-
-.right {
-  display:flex; 
-  flex-direction: column; 
-  height: 100%; /* Important for the flex container to stretch vertically */
-}
-/* Right Header - Controls/Status Bar - Liquid Glass */
-.right-hd {
-  height: 60px; 
-  display:flex; 
-  align-items:center; 
-  gap: 10px; 
-  padding: 10px 20px;
-  border-bottom: 1px solid var(--border); 
-  background: rgba(18, 25, 34, 0.7); 
-  backdrop-filter: blur(8px);
-  flex-shrink: 0;
-  white-space: nowrap; 
-  overflow: hidden;    
-}
-.right-title { font-weight: 700; font-size: 1.2em; }
-.right-sub { color: var(--sub); font-size: 0.8em; }
-
-/* Controls - Bottom Bar - Liquid Glass */
-.controls {
-  display:flex; align-items:center; gap: 8px; padding: 10px 20px;
-  border-top: 1px solid var(--border); 
-  background: rgba(18, 25, 34, 0.7); 
-  backdrop-filter: blur(8px);
-  flex-shrink: 0;
-}
-
-.spacer { flex: 1; }
-
-/* --- Mobile/Small Screen Overrides (max-width: 900px) --- */
-@media (max-width: 900px) {
-  
-  /* Sidebar Positioning */
-  .sidebar {
-    position: fixed; 
-    top: 0; 
-    left: 0; 
-    width: 100%; 
-    z-index: 100;
-    height: 100vh;
-  }
-  
-  /* The class that hides it completely on mobile MUST remain. */
-  .sidebar.hidden { 
-    display: none !important; 
-  }
-
-  /* Show the toggle button only on mobile (it's hidden by React logic when open) */
-  .sidebar-show-toggle {
-      display: block; 
-      flex-shrink: 0; 
-  }
-  
-  /* Right panel size adjustment on mobile */
-  .right { 
-    position: relative; 
-    width: 100%; 
-    height: 100%; 
-  }
-  
-  /* Reduced padding for better screen utilization on small devices */
-  .player-wrap { 
-      padding: 10px; 
-  }
-
-  /* Reduced padding and gap for controls on mobile */
-  .controls {
-      padding: 8px 10px;
-      gap: 5px;
-  }
-  
-  /* Reduce button size slightly on mobile for controls */
-  .controls .btn {
-      padding: 5px 8px;
-  }
-
-  .video { height: 100%; max-height: 100%; border-radius: 14px; }
-  
-  /* Sidebar Content Layout for Mobile (stack elements vertically) */
-  .search-controls-wrap {
-      flex-direction: column;
-      padding-top: 30px; 
-      padding-bottom: 10px; 
-  }
-  
-  .topbar {
-      /* Adjust padding to make room for the close button, which is absolutely positioned */
-      padding: 10px 10px 0 10px;
-      align-items: flex-start;
-      min-height: 60px;
-  }
-  
-  /* Mobile Close Button Positioning (inside sidebar) */
-  .mobile-close-btn { 
-      display: block; 
-      position: absolute;
-      top: 10px;
-      right: 10px;
-      z-index: 110; 
-      margin: 0;
-  }
-  
-  /* Right header content adjustments for mobile */
-  .right-hd {
-      padding-left: 10px;
-      padding-right: 10px;
-  }
-  
-  /* Ensure the title shrinks and truncates gracefully */
-  .right-hd .right-title {
-      flex-shrink: 1;
-      min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-  }
-  
-  /* Hide the long URL/subtitle on narrow mobile screens */
-  .right-hd .right-sub {
-      display: none;
-  }
+/* TVs */
+@media (min-width: 90rem) and (min-height: 56rem){
+  .title{ font-size: var(--fs-md); }
+  .right-title{ font-size: var(--fs-lg); }
 }

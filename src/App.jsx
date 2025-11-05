@@ -2,62 +2,99 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { parseM3U } from "./utils/parseM3U.js";
 import { loadFavorites, saveFavorites, toggleFavorite } from "./utils/storage.js";
 import Sidebar from "./components/Sidebar.jsx";
-import Player from "./components/Player.jsx";
+import UniversalPlayer from "./components/UniversalPlayer.jsx";
 import PlayerControls from "./components/PlayerControls.jsx";
 import "./index.css";
 
+/** Phones-only compact detector (iPad behaves like desktop) */
+function useCompactPhone() {
+  const Q = "(max-width: 47.999rem)"; // ~<=768px phones
+  const [compact, setCompact] = useState(() => matchMedia(Q).matches);
+  useEffect(() => {
+    const mq = matchMedia(Q);
+    const on = (e) => setCompact(e.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  return compact;
+}
+
+/** Safe public path resolver (works in dev, prod, GitHub Pages) */
+function publicUrl(pathFromPublic) {
+  const clean = String(pathFromPublic || "").replace(/^\/+/, "");
+  const base = (import.meta.env.BASE_URL || "/").replace(/\/+$/, "/");
+  return `${base}${clean}`;
+}
+
+/** Utility: are we typing in an input/textarea/contenteditable? */
+function isTypingAnywhere() {
+  const ae = document.activeElement;
+  if (!ae) return false;
+  const tag = ae.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA") return true;
+  if (ae.getAttribute && ae.getAttribute("contenteditable") === "true") return true;
+  return !!ae.closest?.('input, textarea, [contenteditable="true"]');
+}
+
 export default function App() {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [isMobile, setIsMobile] = useState(false);
+  const compact = useCompactPhone();       // true on phones only
+  const [sidebarOpen, setSidebarOpen] = useState(false); // iPad/Desktop overlay
+
+  // Core state
   const [raw, setRaw] = useState("");
   const [all, setAll] = useState([]);
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(""); // search lives in sidebar / sheet
   const [favorites, setFavorites] = useState(loadFavorites());
   const [current, setCurrent] = useState(null);
   const [currentPlaylist, setCurrentPlaylist] = useState("IN");
-  const videoRef = useRef(null);
   const [playing, setPlaying] = useState(false);
 
-  const initialLoad = useRef(true);
+  // Mobile bottom sheet (phones)
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [sheetTab, setSheetTab] = useState("channels"); // playlists | favorites | channels
 
-  // Build-safe public URL helper (works in dev + GH Pages)
-  function publicUrl(pathFromPublic) {
-    // Ensure no leading slash in arg
-    const clean = pathFromPublic.replace(/^\/+/, "");
-    return new URL(clean, import.meta.env.BASE_URL).toString();
-  }
+  const videoEl = useRef(null);
+  const first = useRef(true);
+
+  // On ultra-wide displays, start with sidebar open
+  useEffect(() => {
+    const mq = matchMedia("(min-width: 110rem) and (min-height: 60rem)");
+    const setFromMQ = () => setSidebarOpen(mq.matches);
+    setFromMQ();
+    mq.addEventListener("change", setFromMQ);
+    return () => mq.removeEventListener("change", setFromMQ);
+  }, []);
 
   async function handlePlaylistSelect({ type, text, playlist }) {
     if (type === "preset" && playlist?.file) {
       setCurrentPlaylist(playlist.value);
-      // Files live in public/m3u/
-      const filePath = publicUrl(`m3u/${playlist.file}`);
+      const filePath = publicUrl(`m3u/${playlist.file}`); // /public/m3u/*
       try {
         const res = await fetch(filePath, { cache: "no-cache" });
-        if (!res.ok) throw new Error(`Failed to load ${filePath} (${res.status})`);
+        if (!res.ok) throw new Error(`Failed ${filePath}: ${res.status}`);
         text = await res.text();
       } catch (e) {
-        console.error("Error loading preset:", e);
+        console.error(e);
         text = "";
       }
     }
     setRaw(text || "");
     setCurrent(null);
-    // Do NOT reset q here (preserves focus while typing)
   }
 
+  // Initial load a default playlist
   useEffect(() => {
-    if (initialLoad.current) {
-      initialLoad.current = false;
-      const INDIA = { label: "🇮🇳 India", value: "IN", file: "IN-M3u-File-1-04-11-2025.m3u" };
-      handlePlaylistSelect({ type: "preset", playlist: INDIA });
-    }
+    if (!first.current) return;
+    first.current = false;
+    const INDIA = { label: "🇮🇳 India", value: "IN", file: "IN-M3u-File-1-04-11-2025.m3u" };
+    handlePlaylistSelect({ type: "preset", playlist: INDIA });
   }, []);
 
+  // Parse M3U and select initial channel
   useEffect(() => { setAll(parseM3U(raw)); }, [raw]);
+  useEffect(() => { if (!current && all.length) setCurrent(all[0]); }, [all, current]);
 
-  useEffect(() => { if (!current && all.length > 0) setCurrent(all[0]); }, [all]);
-
+  // Filtered channels by sidebar query
   const filtered = useMemo(() => {
     if (!q.trim()) return all;
     const s = q.toLowerCase();
@@ -68,14 +105,8 @@ export default function App() {
   const canPrev = idx > 0;
   const canNext = idx >= 0 && idx < filtered.length - 1;
 
-  function select(ch) { setCurrent(ch); }
-  function play(ch) {
-    setCurrent(ch);
-    setTimeout(() => {
-      const v = videoRef.current;
-      if (v) v.play().then(() => setPlaying(true)).catch((e) => console.error("Play failed:", e));
-    }, 50);
-  }
+  function select(ch) { setCurrent(ch); if (compact) setSheetOpen(false); }
+  function play(ch)   { setCurrent(ch); if (compact) setSheetOpen(false); }
   function fav(ch) {
     const next = toggleFavorite(favorites, ch);
     setFavorites(next); saveFavorites(next);
@@ -83,96 +114,239 @@ export default function App() {
 
   function onPrev() { if (canPrev) setCurrent(filtered[idx - 1]); }
   function onNext() { if (canNext) setCurrent(filtered[idx + 1]); }
+
+  // Player controls
   function onPlayPause() {
-    const v = videoRef.current; if (!v) return;
-    if (v.paused) v.play().then(() => setPlaying(true)).catch((e)=>console.error("Play failed:", e));
+    const v = videoEl.current; if (!v) return;
+    if (v.paused) v.play().then(() => setPlaying(true)).catch(()=>{});
     else { v.pause(); setPlaying(false); }
   }
   function onFullscreen() {
-    const v = videoRef.current; if (!v) return;
+    const v = videoEl.current; if (!v) return;
     if (document.fullscreenElement) document.exitFullscreen();
     else v.requestFullscreen?.();
   }
 
+  // Capture real <video> element
   useEffect(() => {
-    const v = videoRef.current;
-    if (!v) return;
-    const onPlay = () => setPlaying(true);
-    const onPause = () => setPlaying(false);
-    v.addEventListener("play", onPlay);
-    v.addEventListener("pause", onPause);
-    return () => {
-      v.removeEventListener("play", onPlay);
-      v.removeEventListener("pause", onPause);
-    };
+    const id = setInterval(() => {
+      const el = document.querySelector("video.video");
+      if (el) { videoEl.current = el; clearInterval(id); }
+    }, 150);
+    return () => clearInterval(id);
   }, [current]);
 
-  // Handle mobile/desktop state based on screen width
+  // Keyboard / Remote — skip when typing (fixes spacebar-in-search)
   useEffect(() => {
-    const mq = window.matchMedia("(max-width: 900px)");
-    const handler = (e) => {
-        setIsMobile(e.matches); 
-        if (!e.matches) { 
-            // On Desktop, default sidebar to open
-            setSidebarOpen(true); 
-        } else {
-            // On Mobile, default sidebar to closed
-            setSidebarOpen(false);
-        }
+    const onKey = (e) => {
+      if (isTypingAnywhere()) return; // do nothing if focused in inputs
+      const v = videoEl.current; if (!v) return;
+      switch (e.key) {
+        case " ":
+          e.preventDefault(); onPlayPause(); break;
+        case "f": case "F": onFullscreen(); break;
+        case "ArrowRight": v.currentTime = Math.min(v.duration || 1e9, v.currentTime + 10); break;
+        case "ArrowLeft":  v.currentTime = Math.max(0, v.currentTime - 10); break;
+        case "ArrowUp":    v.volume = Math.min(1, v.volume + 0.05); break;
+        case "ArrowDown":  v.volume = Math.max(0, v.volume - 0.05); break;
+        case "MediaPlayPause": onPlayPause(); break;
+        case "MediaTrackNext": onNext(); break;
+        case "MediaTrackPrevious": onPrev(); break;
+      }
     };
-    handler(mq);
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
-  }, []);
+    addEventListener("keydown", onKey);
+    return () => removeEventListener("keydown", onKey);
+  }, [onNext]);
 
-  // 'hidden' prop is only used on mobile to explicitly hide the sidebar element when closed.
-  // On desktop, the sidebar stays mounted, and hiding is controlled by the CSS grid column collapse.
-  const sidebarHiddenProp = isMobile && !sidebarOpen; 
+  const favSet = useMemo(() => new Set(favorites.map(f => f.url)), [favorites]);
+
+  // --- Mobile Bottom Sheet Content (phones) ---
+  function SheetContent() {
+    return (
+      <div className="sheet-bd">
+        {/* Search inside sheet (phones) */}
+        <div className="sheet-search">
+          <div className="search-input">
+            <span className="loupe">🔍</span>
+            <input
+              aria-label="Search channels"
+              value={q}
+              onChange={(e)=>setQ(e.target.value)}
+              placeholder="Search channels or URLs"
+              autoComplete="off" autoCorrect="off" spellCheck="false"
+            />
+            {!!q && <button className="clear" onClick={()=>setQ("")} aria-label="Clear">✕</button>}
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="tabs">
+          {["playlists","favorites","channels"].map(t => (
+            <button
+              key={t}
+              className={`tab ${sheetTab === t ? "active" : ""}`}
+              onClick={() => setSheetTab(t)}
+            >
+              {t === "playlists" ? "Playlists" : t === "favorites" ? "Favorites" : "Channels"}
+            </button>
+          ))}
+        </div>
+
+        {/* Panels */}
+        <div className="panel">
+          {sheetTab === "playlists" && (
+            <div className="list">
+              {[
+                { label: "🇺🇸 USA", value: "US", file: "US-M3u-File-1-04-11-2025.m3u" },
+                { label: "🇬🇧 UK", value: "UK", file: "UK-M3u-File-1-04-11-2025.m3u" },
+                { label: "🇮🇳 India", value: "IN", file: "IN-M3u-File-1-04-11-2025.m3u" },
+              ].map(p => (
+                <div
+                  key={p.value}
+                  className={`row ${currentPlaylist === p.value ? "active" : ""}`}
+                  onClick={() => handlePlaylistSelect({ type: "preset", playlist: p })}
+                >
+                  <div className="left">
+                    <div className="logo" />
+                    <div className="title">{p.label}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {sheetTab === "favorites" && (
+            <div className="list">
+              {favorites.map((ch) => (
+                <div
+                  key={ch.id}
+                  className={`row ${current?.url === ch.url ? "active" : ""}`}
+                  onClick={() => select(ch)}
+                >
+                  <div className="left">
+                    <div className="logo" />
+                    <div>
+                      <div className="title">{ch.title}</div>
+                      <div className="meta">{new URL(ch.url).hostname}</div>
+                    </div>
+                  </div>
+                  <div style={{ display:"flex", gap:"0.5rem" }}>
+                    <button className="favbtn" onClick={(e)=>{e.stopPropagation(); fav(ch);}}>
+                      ★
+                    </button>
+                    <button className="playbtn" onClick={(e)=>{e.stopPropagation(); play(ch);}}>
+                      ▶
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {!favorites.length && <div className="meta" style={{ padding:"0.5rem" }}>No favorites yet</div>}
+            </div>
+          )}
+
+          {sheetTab === "channels" && (
+            <div className="list">
+              {filtered.map((ch) => (
+                <div
+                  key={ch.id}
+                  className={`row ${current?.url === ch.url ? "active" : ""}`}
+                  onClick={() => select(ch)}
+                >
+                  <div className="left">
+                    <div className="logo" />
+                    <div>
+                      <div className="title">{ch.title}</div>
+                      <div className="meta">{(() => { try { return new URL(ch.url).hostname; } catch { return ch.url; } })()}</div>
+                    </div>
+                  </div>
+                  <div style={{ display:"flex", gap:"0.5rem" }}>
+                    <button className="favbtn" onClick={(e)=>{e.stopPropagation(); fav(ch);}}>
+                      {favSet.has(ch.url) ? "★" : "☆"}
+                    </button>
+                    <button className="playbtn" onClick={(e)=>{e.stopPropagation(); play(ch);}}>
+                      ▶
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {!filtered.length && <div className="meta" style={{ padding:"0.5rem" }}>No channels match your search</div>}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Helper to extract hostname (for H2 header)
+  const host = (() => {
+    try { return current ? new URL(current.url).hostname : ""; }
+    catch { return ""; }
+  })();
 
   return (
-    // Apply sidebar-hidden class to the app container to toggle the grid layout on desktop
-    <div className={`app ${!sidebarOpen ? "sidebar-hidden" : ""}`}>
-      <Sidebar
-        hidden={sidebarHiddenProp} 
-        q={q}
-        setQ={setQ}
-        playlist={[]}                 /* Optional: your own list if needed */
-        favorites={favorites}
-        channels={filtered}           /* Search applies here */
-        activeUrl={current?.url}
-        currentPlaylist={currentPlaylist}
-        onSelectPlaylist={handlePlaylistSelect}
-        onPlay={play}
-        onFav={fav}
-        onSelect={select}
-        onHideSidebar={() => setSidebarOpen(false)} 
-      />
+    <div className={`app ${compact ? "compact" : "desktop"}`}>
+      {/* iPad/Desktop: overlay sidebar & backdrop */}
+      {!compact && (
+        <>
+          <div
+            className={`backdrop ${sidebarOpen ? "show" : ""}`}
+            onClick={() => setSidebarOpen(false)}
+            aria-hidden={!sidebarOpen}
+          />
+          <div className={`sidebar-overlay ${sidebarOpen ? "open" : ""}`}>
+            <Sidebar
+              q={q}
+              setQ={setQ}
+              favorites={favorites}
+              channels={filtered}
+              activeUrl={current?.url}
+              currentPlaylist={currentPlaylist}
+              onSelectPlaylist={handlePlaylistSelect}
+              onPlay={play}
+              onFav={fav}
+              onSelect={(ch) => { select(ch); setSidebarOpen(false); }}
+              onClose={() => setSidebarOpen(false)}
+              overlay
+            />
+          </div>
+        </>
+      )}
 
+      {/* Right/content */}
       <div className="right">
+        {/* Header (H2: toggle + title + hostname) */}
         <div className="right-hd">
-          {/* Show the '☰ Show' button only when the sidebar is closed (!sidebarOpen) */}
-          {!sidebarOpen && (
-            <button 
-              className="iconbtn sidebar-show-toggle" 
+          {!compact && (
+            <button
+              className="iconbtn hdr-toggle"
               onClick={() => setSidebarOpen(true)}
+              aria-label="Open sidebar"
             >
-              ☰ Show
+              ☰
             </button>
           )}
           <div className="right-title">{current?.title || "Select a channel"}</div>
-          {current && <div className="right-sub">{current.url}</div>}
+          {!compact && current && <div className="right-sub">{host}</div>}
+          {compact && (
+            <button
+              className="btn"
+              onClick={() => { setSheetTab("channels"); setSheetOpen(true); }}
+              aria-label="Browse"
+            >
+              ☰ Browse
+            </button>
+          )}
         </div>
 
-        <div className="player-wrap">
-          {current
-            ? <Player url={current.url} ref={videoRef} />
-            : <div style={{ color: "var(--sub)", padding: 20, fontSize: "1.2em" }}>
-                Load an M3U and pick a channel
-              </div>
-          }
+        <div className="player-wrap" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+          {current ? (
+            <UniversalPlayer url={current.url} onPlayState={setPlaying} />
+          ) : (
+            <div className="empty-state">Load an M3U and pick a channel</div>
+          )}
         </div>
 
-        <div className="controls">
+        <div className="controls" style={{ paddingBottom: "calc(1rem + env(safe-area-inset-bottom))" }}>
           <PlayerControls
             onPrev={onPrev}
             onPlayPause={onPlayPause}
@@ -184,6 +358,25 @@ export default function App() {
           />
         </div>
       </div>
+
+      {/* Phones: bottom sheet navigator */}
+      {compact && (
+        <div
+          className={`sheet ${sheetOpen ? "open" : ""}`}
+          onClick={(e)=>{ if (e.target.classList.contains("sheet")) setSheetOpen(false); }}
+          style={{ paddingLeft: "env(safe-area-inset-left)", paddingRight: "env(safe-area-inset-right)" }}
+        >
+          <div className="sheet-wrap">
+            {/* NOTE: header only on phones to avoid duplicate UI on desktop */}
+            <div className="sheet-hd">
+              <button className="iconbtn" onClick={()=>setSheetOpen(false)} aria-label="Close">✕</button>
+              <div className="title">Browse</div>
+              <div style={{ inlineSize: "2rem" }} />
+            </div>
+            <SheetContent />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
