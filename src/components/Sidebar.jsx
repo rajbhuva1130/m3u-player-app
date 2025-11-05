@@ -29,7 +29,7 @@ function Sidebar({
     if (!file) return;
     const text = await file.text();
     onSelectPlaylist({ type: "local", text });
-    fileRef.current.value = "";
+    if (fileRef.current) fileRef.current.value = "";
   }, [onSelectPlaylist]);
 
   const handlePlaylistClick = useCallback((p) => {
@@ -38,20 +38,13 @@ function Sidebar({
 
   return (
     <aside className={`sidebar ${hidden ? "hidden" : ""}`}>
-      {/* TOP BAR */}
       <div className="topbar">
-        <button className="iconbtn mobile-close-btn" onClick={onHideSidebar}>☰ Hide</button>
+        <button className="iconbtn mobile-close-btn" onClick={onHideSidebar}>✕</button>
 
-        {/* ✅ Search Bar placed here and memoized */}
         <div className="search-controls-wrap">
-          <SearchBar
-            value={q}
-            onChange={setQ}
-          />
-
-          {/* Upload M3U Button */}
+          <SearchBar value={q} onChange={setQ} />
           <label className="iconbtn upload-btn" title="Upload local .m3u">
-            ⬆︎
+            ⬆︎ Upload
             <input
               ref={fileRef}
               type="file"
@@ -63,10 +56,7 @@ function Sidebar({
         </div>
       </div>
 
-      {/* BODY */}
       <div className="sidebar-body">
-
-        {/* PLAYLISTS */}
         <AccordionSection defaultOpen={true} title={`Playlists (${PLAYLISTS.length})`}>
           {PLAYLISTS.map(p => (
             <div
@@ -80,13 +70,8 @@ function Sidebar({
               </div>
             </div>
           ))}
-
-          {!PLAYLISTS.length && (
-            <div className="meta" style={{ padding: "6px 10px" }}>No Playlists found</div>
-          )}
         </AccordionSection>
 
-        {/* FAVORITES */}
         <AccordionSection defaultOpen={false} title={`Favorite (${favorites.length})`}>
           {favorites.map(ch => (
             <ChannelRow
@@ -104,7 +89,6 @@ function Sidebar({
           )}
         </AccordionSection>
 
-        {/* CHANNELS */}
         <AccordionSection defaultOpen={false} title={`Channels (${channels.length})`}>
           {channels.map(ch => (
             <ChannelRow
@@ -118,10 +102,11 @@ function Sidebar({
             />
           ))}
           {!channels.length && (
-            <div className="meta" style={{ padding: "6px 10px" }}>Load an .m3u to see all channels</div>
+            <div className="meta" style={{ padding: "6px 10px" }}>
+              No channels match your search
+            </div>
           )}
         </AccordionSection>
-
       </div>
     </aside>
   );

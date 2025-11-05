@@ -4,6 +4,7 @@ import { loadFavorites, saveFavorites, toggleFavorite } from "./utils/storage.js
 import Sidebar from "./components/Sidebar.jsx";
 import Player from "./components/Player.jsx";
 import PlayerControls from "./components/PlayerControls.jsx";
+import "./index.css";
 
 export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -12,57 +13,54 @@ export default function App() {
   const [q, setQ] = useState("");
   const [favorites, setFavorites] = useState(loadFavorites());
   const [current, setCurrent] = useState(null);
-  const [currentPlaylist, setCurrentPlaylist] = useState("UK");
+  const [currentPlaylist, setCurrentPlaylist] = useState("IN");
   const videoRef = useRef(null);
   const [playing, setPlaying] = useState(false);
 
-  // --- Playlist Loading Logic ---
   const initialLoad = useRef(true);
+
+  // Build-safe public URL helper (works in dev + GH Pages)
+  function publicUrl(pathFromPublic) {
+    // Ensure no leading slash in arg
+    const clean = pathFromPublic.replace(/^\/+/, "");
+    return new URL(clean, import.meta.env.BASE_URL).toString();
+  }
 
   async function handlePlaylistSelect({ type, text, playlist }) {
     if (type === "preset" && playlist?.file) {
       setCurrentPlaylist(playlist.value);
-      const filePath = `/${playlist.file}`;
+      // Files live in public/m3u/
+      const filePath = publicUrl(`m3u/${playlist.file}`);
       try {
-        const res = await fetch(filePath);
-        if (!res.ok) throw new Error(`Failed to load ${filePath}`);
+        const res = await fetch(filePath, { cache: "no-cache" });
+        if (!res.ok) throw new Error(`Failed to load ${filePath} (${res.status})`);
         text = await res.text();
       } catch (e) {
         console.error("Error loading preset:", e);
         text = "";
       }
     }
-
     setRaw(text || "");
     setCurrent(null);
-
-    // FIX: Do NOT reset search on playlist change or typing breaks input focus
-    // setQ("");
+    // Do NOT reset q here (preserves focus while typing)
   }
 
   useEffect(() => {
     if (initialLoad.current) {
       initialLoad.current = false;
-      const INDIA_PLAYLIST_DATA = { label: "🇮🇳 India", value: "IN", file: "IN-M3u-File-1-04-11-2025.m3u" };
-      handlePlaylistSelect({ type: "preset", playlist: INDIA_PLAYLIST_DATA });
+      const INDIA = { label: "🇮🇳 India", value: "IN", file: "IN-M3u-File-1-04-11-2025.m3u" };
+      handlePlaylistSelect({ type: "preset", playlist: INDIA });
     }
   }, []);
 
-  // Parse M3U
   useEffect(() => { setAll(parseM3U(raw)); }, [raw]);
 
-  // Auto-select first channel
-  useEffect(() => {
-    if (!current && all.length > 0) setCurrent(all[0]);
-  }, [all]);
+  useEffect(() => { if (!current && all.length > 0) setCurrent(all[0]); }, [all]);
 
   const filtered = useMemo(() => {
     if (!q.trim()) return all;
     const s = q.toLowerCase();
-    return all.filter(c =>
-      c.title.toLowerCase().includes(s) ||
-      c.url.toLowerCase().includes(s)
-    );
+    return all.filter(c => c.title.toLowerCase().includes(s) || c.url.toLowerCase().includes(s));
   }, [all, q]);
 
   const idx = filtered.findIndex(c => c.url === current?.url);
@@ -70,77 +68,58 @@ export default function App() {
   const canNext = idx >= 0 && idx < filtered.length - 1;
 
   function select(ch) { setCurrent(ch); }
-
   function play(ch) {
     setCurrent(ch);
     setTimeout(() => {
-      if (videoRef.current) {
-        videoRef.current.play()
-          .then(() => setPlaying(true))
-          .catch(e => console.error("Play failed:", e));
-      }
+      const v = videoRef.current;
+      if (v) v.play().then(() => setPlaying(true)).catch((e) => console.error("Play failed:", e));
     }, 50);
   }
-
   function fav(ch) {
     const next = toggleFavorite(favorites, ch);
-    setFavorites(next);
-    saveFavorites(next);
+    setFavorites(next); saveFavorites(next);
   }
 
   function onPrev() { if (canPrev) setCurrent(filtered[idx - 1]); }
   function onNext() { if (canNext) setCurrent(filtered[idx + 1]); }
-
   function onPlayPause() {
-    const el = videoRef.current;
-    if (!el) return;
-
-    if (el.paused) {
-      el.play().then(() => setPlaying(true)).catch(e => console.error("Play failed:", e));
-    } else {
-      el.pause();
-      setPlaying(false);
-    }
+    const v = videoRef.current; if (!v) return;
+    if (v.paused) v.play().then(() => setPlaying(true)).catch((e)=>console.error("Play failed:", e));
+    else { v.pause(); setPlaying(false); }
   }
-
   function onFullscreen() {
-    const el = videoRef.current;
-    if (!el) return;
+    const v = videoRef.current; if (!v) return;
     if (document.fullscreenElement) document.exitFullscreen();
-    else el.requestFullscreen?.();
+    else v.requestFullscreen?.();
   }
 
   useEffect(() => {
-    const videoElement = videoRef.current;
-    if (!videoElement) return;
-
+    const v = videoRef.current;
+    if (!v) return;
     const onPlay = () => setPlaying(true);
     const onPause = () => setPlaying(false);
-
-    videoElement.addEventListener('play', onPlay);
-    videoElement.addEventListener('pause', onPause);
-
+    v.addEventListener("play", onPlay);
+    v.addEventListener("pause", onPause);
     return () => {
-      videoElement.removeEventListener('play', onPlay);
-      videoElement.removeEventListener('pause', onPause);
+      v.removeEventListener("play", onPlay);
+      v.removeEventListener("pause", onPause);
     };
   }, [current]);
 
-  // Mobile: collapse sidebar initially
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 900px)");
     if (mq.matches) setSidebarOpen(false);
   }, []);
 
   return (
-    <div className="app">
+    <div className={`app ${!sidebarOpen ? "sidebar-hidden" : ""}`}>
       <Sidebar
         hidden={!sidebarOpen}
         q={q}
         setQ={setQ}
-        playlist={[]}                // keep empty or use real playlists if you have them
+        playlist={[]}                 /* Optional: your own list if needed */
         favorites={favorites}
-        channels={filtered}          // ✅ Pass filtered list, not all
+        channels={filtered}           /* Search applies here */
         activeUrl={current?.url}
         currentPlaylist={currentPlaylist}
         onSelectPlaylist={handlePlaylistSelect}
@@ -150,7 +129,6 @@ export default function App() {
         onHideSidebar={() => setSidebarOpen(false)}
       />
 
-
       <div className="right">
         <div className="right-hd">
           {!sidebarOpen && (
@@ -159,13 +137,15 @@ export default function App() {
             </button>
           )}
           <div className="right-title">{current?.title || "Select a channel"}</div>
-          {current && <div className="right-sub"> {current.url}</div>}
+          {current && <div className="right-sub">{current.url}</div>}
         </div>
 
         <div className="player-wrap">
           {current
             ? <Player url={current.url} ref={videoRef} />
-            : <div style={{ color: "var(--sub)", padding: 20, fontSize: '1.2em' }}>Load an M3U and pick a channel</div>
+            : <div style={{ color: "var(--sub)", padding: 20, fontSize: "1.2em" }}>
+                Load an M3U and pick a channel
+              </div>
           }
         </div>
 

@@ -1,7 +1,8 @@
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
-  base: "/m3u-player-app/", // ⬅️ Repo name
-});
+  // IMPORTANT: this must match your repo name
+  base: '/m3u-player-app/',
+})
